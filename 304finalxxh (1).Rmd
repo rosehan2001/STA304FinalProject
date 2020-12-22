@@ -1,0 +1,400 @@
+---
+title: "Identification of How the 2019 Canadian Federal Election Would Have Been Different If ‘Everyone’ Had Voted Using Propensity Score Matching, Multinomial Logistic Regression and Post-stratification"
+author: "Xiaoxuan Han 1005868161"
+date: "12/22/2020"
+
+output:
+  pdf_document: default
+  html_document: default
+---
+Code and data supporting this analysis is available at:
+https://github.com/rosehan2001/STA304FinalProject.git
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstract
+In 2019 Canadian Federal Election, liberal party has won among all the other parties and Justin Trudeau was able to take another opportunity to lead Canada. However, it has come to our attention that the election result might be different if “everyone” has voted since some people might fail to vote due to unexpected circumstances on election day. In this scenario, “everyone” will be considered as all the people who are above 18 years old and answered General Social Survey in 2017. In this paper of study, we believe the turnout on election day might play an important role in affecting the final election result, so we will show how to properly predict the election result by first performing propensity score mathcing and creating multinomial logistic regression models based on 2019 Canadain Election Study Online Survey Data, and perform post-stratification based on 2017 General Social Survey Family Data to obtain estimates of popular votes for each political party. By comparing the esitmated prediction result and the real popular votes, we conclude by stating that the turnout based on models and result is significant in a way that different turnout will possibly lead to different election results.
+
+# Keywords
+2019 Canadian Federal Election, Propensity Score Matching, Casual Link Observational Study, Multinomial Logistic Regression, Post-Stratification, Turnout
+
+# Introduction
+During election season, prediction of election result based on various resources and surveys have been useful in analyzing the political trends over years. It is crucial to know that the actual eletion result might not be reprentative enough for the entire population since not all Canadian people have successfully voted on election day due to various reasons. Thus, we want to explore if the election result is going to be different if "everyone" has voted on election day. In order to achive this goal, we have found large-scale surveys Canadian Election Survey (CES), which have been conduted during each Canadian federal election since 1965. In these surveys, valuable information including voters' intention, voters' personal information, the major parties that voters' leaning towards and etc. are available. The subset of 2019 online survey data have been chosen as the survey data set in this paper of study. In order to obtain accurate prediction result of popular vote from everyone, there are few key points that need to be noticed. First, some casual inference of observational data need to be incorporated in the analysis. Second, identifying what variables might be relevent in creating prediction models is helpful in getting more accurate response. Third, choosing the appropriate model for prediction is significant since different statistical models usually lead to different results. 
+
+Over the years, there tends to be a noticeable gap between young people and old people, from both mentally and physically. Therefore, it is common for them to hold different opinions towards the world, which also includes their voting choice. This phenomenon indicates a potentail casual inference, and a popular way for making casual inference is propensity score matching. Propensity score matching allows us analyze observational data and mimicing particular characteristcs of a randomized controlled cell, where we have the oppourtunity to descrive casual inference between treatment and outcome. This method will be used on finding out if there is a casual link between whether the indiviual is young and old and whether this person votes for a particualr party. Important explanatory variables which highlight an individual's personal information including age(in two groups), sex, education and province will be selected for the prediction model. Multinomial logistic regression models will be selected as our prediction model since we are predicting a binary response based on two or more independent variables, where the log odds of the outcome is modeled as a linear combination of the predictor variables. By using this type of model which paired with propensity score mathcing,  we will perform post-stratification, which is the final step of predicting popular vote for each political party. Post-stratification is important in generating more accurate result is that it refers to the process of adjusting the estimates, essentially a weighted average of estimates from all possible combinations of attributes. Eventually, we did find out a difference between estimates of prediction election result and actual election result, so we performed further analysis regarding how voters' turnout based on model and result is important in election result. 
+
+In this paper, 2019 Canadian Election Study (CES) Online Survey Data and 2017 General Social Survey (GSS) Family Data will be used to investigate how propensity score matching could be used to make inference on the casual inference that can be made between age and voting result, find out what prediction result we will get for each party by creating multinomial logistic regression models, and perform post-statification on census data (GSS). In the Methodology section, key points on the two data sets will be introduced, as well as the models used to perform propensity score matching analysis and multinomial logistic regression analysis. Models results and estimated prediction of popular vote for each party will be provided in the Results section. Summary, conclusions, weaknesses and what we can do in the future regarding the turnout of models and result will be presented in the Discussion section. All the resources and materials that were referenced will be presented both in lines and in the Reference Section. Some summart tables of model results have been added the Appendix Section.
+
+# Methodology
+
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+devtools::install_github("hodgettsp/cesR", force = TRUE)
+#install.packages("labelled")
+library(cesR)
+library(labelled)
+get_ces("ces2019_web")
+raw_data1 <- ces2019_web
+```
+```{r echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+library(haven)
+#install.packages("tidyverse")
+library(tidyverse)
+# Add the labels
+raw_data1 <- labelled::to_factor(raw_data1)
+# Just keep some variables
+reduced_data1 <- 
+  raw_data1 %>% 
+  select(cps19_yob,
+         cps19_gender,
+         cps19_province,
+         cps19_education,
+         cps19_votechoice) %>% na.omit() 
+
+reduced_data1$cps19_yob <- as.numeric(as.character(reduced_data1$cps19_yob)) 
+
+#mutate ag: young and old 
+reduced_data1$cps19_yob <- ifelse(reduced_data1$cps19_yob <= 1959,1,0) 
+# use 60 as an age bound 
+# a possible drawback
+
+# mutate gender variable 
+reduced_data1 <-
+  reduced_data1 %>%
+  filter(cps19_gender != "Other") %>% # since people are M/F in gss data
+  # this is a possible drawback
+  mutate(
+    sex = case_when(
+      cps19_gender == "A man" ~ "Male",
+      cps19_gender == "A woman" ~ "Female"
+    )
+  )
+
+# mutate votechoice
+reduced_data1 <-
+  reduced_data1 %>%
+  filter(cps19_votechoice != "Don't know/ Prefer not to answer")
+# filter out people who shows no response
+
+# mutate education
+reduced_data1 <- 
+  reduced_data1 %>% 
+  filter(cps19_education != "Don't know/ Prefer not to answer") %>% 
+  mutate(
+    education = case_when(
+      cps19_education == "No schooling" ~ "Less than high school diploma or its equivalent", 
+      cps19_education == "Some elementary school" ~ "Less than high school diploma or its equivalent",
+      cps19_education == "Completed elementary school" ~ "Less than high school diploma or its equivalent",
+      cps19_education == "Some secondary/ high school" ~ "Less than high school diploma or its equivalent",
+      cps19_education == "Completed secondary/ high school" ~ "High school diploma or a high school equivalency certificate",
+      cps19_education == "Some technical, community college, CEGEP, College Classique" ~ "College, CEGEP or other non-university certificate or trade",
+      cps19_education == "Completed technical, community college, CEGEP, College Classique" ~ "College, CEGEP or other non-university certificate or trade",
+      cps19_education == "Some university" ~ "University certificate or diploma below the bachelor’s level",
+      cps19_education == "Bachelor's degree" ~ "Bachelor’s degree (e.g. B.A., B.Sc., LL.B.)",
+      cps19_education == "Master's degree" ~ "University certificate, diploma or degree", 
+      cps19_education == "Professional degree or doctorate" ~ "University certificate, diploma or degree"
+    )
+  )
+
+#mutate province 
+reduced_data1 <- 
+  reduced_data1 %>%
+  filter(cps19_province != "Northwest Territories") %>%
+  filter(cps19_province != "Yukon")
+
+reduced_data1 <- reduced_data1 %>%
+  rename(
+     votechoice = cps19_votechoice,
+     province = cps19_province,
+     age = cps19_yob
+  ) %>%
+  select(age, sex, province, education, votechoice) %>% na.omit()
+
+```
+## Data
+```{r echo=FALSE, include=FALSE}
+library(devtools)
+library(tableone)
+library(survival)
+listVars <- c("cps19_yob", "cps19_education", "cps19_province", "cps19_gender")
+catVars <- c("cps19_yob", "cps19_education", "cps19_province", "cps19_gender")
+table1 <- CreateTableOne(vars = listVars, data = ces2019_web, factorVars = catVars)
+table1
+```
+
+2019 Canadian Election Study Online Survey Data has been used as the survey data for performing propensity score matching and building prediction models for each political party. It has 37822 observations in total and after data cleaing process, 36363 observations are left for usage. The original data set includes 620 variables in total, but in order to make prediction models, the data size will be reduced and only relevant variables will be selected. We decide to focus on the respondent's personal characteristics and experience, so we create the summary of the respondent's age, the gender of the respondent, the highest education level completed, province in which the repsondent lives. It can be seen that the overall proportion of older people tends to be smaller than the proportion of younger people. There is also greater proportion of people who completed technical, community college, CEGEP, College Classique and who achieve bachelor's degree. There is a significant proportion amount of respondents who live in Ontaio. Also, there tends to be more female than male, where repsondents of other genders only occupies a smaller proportion.
+
+Figure 1. Baseline Characteristics of 2019 Canadian Election Study Online Survey Data After Data Cleaning
+```{r echo=FALSE}
+listVars2 <- c("sex", "province", "education")
+catVars2 <- c("sex", "province", "education")
+table2 <- CreateTableOne(vars = listVars2, data = reduced_data1, factorVars = catVars2, strat = c("age"))
+table2
+```
+
+We cleaned 2019 Canadian Election Study Online Survey Data by selecting four relevant categorical variables for model prediction, which are the respondent's age, the gender of the respondent, the highest education level completed, province in which the repsondent lives. All missing values have been removed from the original data set since missing values will make model prediction hard and complicated. Since an obvious difference in age has been noticed from original dataset, we stratify age into two groups to make a baseline charactristics tableand and check if these groups are similar at baseline. As it turns out from the table, two groups indeed show similar proportions in sex, province, and education, so we will be more confident that observed differences in outcomes between the groups have to do with the intervention rather than confounding factors.
+
+The census data that we choose to perform post-stratification on is 2017 General Social Survey Family Data. This data set was obtained from Statistics Canada, and we performed data cleaning process to reduce its size and manipulate its variables to make it easier for post-stratification process. Its target population is all non-institutionalized persons 15 years of age or older, living in the 10 provinces of Canada. Since the eligible age for voting during elections is 18, all the respondents who are below 18 have been removed from the data set. Also, since this data was collected with voluntary response and the overall response rate is 52.4%, all missing values have been removed from the data.
+
+## Model 
+We will be using multinomial logistic regression models paried with propensity score mathcing to model the proportion of voters who will vote for each party. The reason we chose this multinomial logistic regression model is that we are predicting a binary response based on two or more independent variables, where the log odds of the outcome is modeled as a linear combination of the predictor variables. We will be using age (in two groups), sex, education, and province which are all recorded as categorical variables, to perform the modeling, and age will be the propensity. We will run the seven multinomial logistic regression model for each political party by using the function `glm()` and matched data generated from propensity score matching, and then save the descriptive statistics into a summary table.
+
+We will first build a logistic regression model for the treatment, which is age (in two groups), to get the propensity score. The multinomial logistic regression model for logistic regression model for the treatment is: $$ y_{age} = \beta_{intercept} + \beta{sex}x_{sex} + \beta_{province}x_{province}  + \beta_{education}x_{education} + \epsilon $$. $y_{age}$ will the propensity score, and $x_{sex}$, $x_{province}$, $x_{education}$ are all predictor variables of sex, province, and education repectively. They correspond to estimates of $\beta{sex}$, $\beta_{province}$, $\beta_{education}$ respectively in this model. Propensity score matching aims to create groups of treated and control subjects which have similar covariate values so that subsequent comparisons, made within these two matched groups, are not confounded by differences in covariate distributions. We estimate gaps for old and young people and analyze average treatment effects on the outcome variable, which is vote choice. In order to obtain matched pairs of treated and untreated subjects when matching with propensity score, we first choose between matching without replacement. When an untreated subject has been matched to a treated subject, a matched pair has been created. This process repeats for many times, until we get a full propensity matched data set. Based on the propensity score matched data, we will then be able to build multinomial logistic regression models to predict votechoice for each party using explanatory variables age, sex, province and educaton. 
+```{r echo=FALSE}
+library(broom)
+propensity_score <- glm(age ~ sex + province + education,
+                        family = binomial,
+                        data = reduced_data1)
+# We will now add our forecast to our dataset.
+reduced_data1 <-
+  augment(propensity_score,
+          data = reduced_data1,
+          type.predict = "response") %>%
+  dplyr::select(-.resid, -.std.resid, -.hat, -.sigma, -.cooksd)
+# Now we use our forecast to create matches.
+# For every person who was actually treated (given
+# free shipping) we want the untreated person who
+
+reduced_data1 <-
+  reduced_data1 %>%
+  arrange(.fitted, age)
+
+# update.packages("xfun")
+# install.packages("xfun")
+# install.packages("arm")
+
+reduced_data1$treated <-
+  if_else(reduced_data1$age == 0, 0, 1)
+reduced_data1$treated <-
+  as.integer(reduced_data1$treated)
+matches <- arm::matching(z = reduced_data1$treated,
+                         score = reduced_data1$.fitted)
+reduced_data1 <- cbind(reduced_data1, matches)
+
+reduced_data_matched <-
+  reduced_data1 %>%
+  filter(match.ind != 0) %>%
+  dplyr::select(-match.ind, -pairs, -treated)
+
+#head(reduced_data_matched)
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+#install.packages("huxtable")
+library(huxtable)
+# for liberal party
+vote_for_liberal_party <- reduced_data_matched %>% 
+  mutate(vote_liberal_party = ifelse(votechoice == "Liberal Party", 1, 0))
+
+propensity_score_regression_1 <- 
+  glm(vote_liberal_party ~ age + sex + province + education, data = vote_for_liberal_party, family=binomial(link = "logit"))
+
+#summary(propensity_score_regression_1)
+
+#huxtable::huxreg(propensity_score_regression_1)
+```
+The multinomial logistic regression model for predictin the proportion of voters who will vote forLiberal Party is: $$ y_{liberal party} = \beta_{0} + \beta_1x_1 + \beta_2x_2 + ... + \beta_{17}x_{17} + \epsilon $$. $p_{liberal party}$ represents the proportion of voters who will vote for Liberal Party. $y_1$ represents the response variable in the multinomial logistic regression. It represents the log odds of the proportion of voters who will vote for Liberal Party. Similarly, $\beta_{0}$ represents the intercept of the model, which is the fixed baseline intercept representing the proportion of voters who are younger than 60, who are female, who lives in Alberta, who completed Bachelor's degreem, and will vote for liberal party. $\beta_1$ is the estimate of the age group categories "below 60 years old", and "above is 60 years old", respectively, with "below 60 years old" as the reference category;  $\beta_2$ is the estimate of sex,with "Female" as the reference category; $\beta_{3}$ to $\beta_{12}$ are the estimates of province categories, with "Alberta" as the reference category; $\beta_{13}$ to $\beta_{17}$ are estimates of education categories, with "Bachelor's Degree" as the reference category. The predictor variables are age (in two groups), sex, education and province.
+
+Another six multinomial logistic regression models for predicting the proportion of voters who will for Conservative Party, NDP Party, Bloc Quebecois Party, Green Party, People's Party, and Another Party have also been built by using the same logic as building the model for Liberal Party. There models results are included in the Appendix. The multinomial logistic regression model for predicting the proportion of voters who will vote for Conservative Party is: $$ y_{conservative} = \beta_{18} + \beta_{19}x_{19} + \beta_{20}x_{20} + ... + \beta_{35}x_{35} + \epsilon $$. The multinomial logistic regression model for predicting the proportion of voters who will vote for NDP Party is: $$ y_{ndp} = \beta_{36} + \beta_{37}x_{37} + \beta_{38}x_{38} + ... + \beta_{53}x_{53} + \epsilon $$. The multinomial logistic regression model for predicting the proportion of voters who will vote for Bloc Quebecois Party is: $$ y_{blocquebecois} = \beta_{54} + \beta_{55}x_{55} + \beta_{56}x_{56} + ... + \beta_{71}x_{71} + \epsilon $$. The multinomial logistic regression model for predicting the proportion of voters who will vote for Green Party is: $$ y_{green} = \beta_{72} + \beta_{73}x_{73} + \beta_{74}x_{74} + ... + \beta_{89}x_{89} + \epsilon $$. The multinomial logistic regression model for prediting the proportion of voters who will vote for People's Party is: $$ y_{people's} = \beta_{90} + \beta_{91}x_{91} + \beta_{92}x_{92} + ... + \beta_{107}x_{107} + \epsilon $$. The multinomial logistic regression model for predicting the proportion of voters who will vote for Another Party is: $$ y_{anotherparty} = \beta_{108} + \beta_{109}x_{109} + \beta_{110}x_{110} + ... + \beta_{125}x_{125} + \epsilon $$. Each $p_i$ represents the proportion of voters who will vote for "i" political party, and $y_i$ is the response variable in each multinomial logistic regression, where i = Conservative Party, NDP Party, Bloc Quebecois Party, Green Party, People's Party,Another Party. The interpretation of parameters from $\beta_{19}$ to $\beta_{125}$ will follow the same logic as the interpreation for parameters from $\beta_{0}$ to $\beta_{17}$. The predictor variables are age (in two groups), sex, education and province, which are exactly the same in each model.
+
+```{r echo=FALSE, include=FALSE}
+# for Conservative Party
+vote_for_conservative_party <- reduced_data_matched %>% 
+  mutate(vote_conservative_party = ifelse(votechoice == "Conservative Party", 1, 0))
+
+propensity_score_regression_2 <- 
+  glm(vote_conservative_party ~ age + sex + province + education, data = vote_for_conservative_party, family=binomial(link = "logit"))
+
+#huxtable::huxreg(propensity_score_regression_2)
+```
+
+```{r echo=FALSE, include=FALSE}
+# Vote for ndp
+vote_for_ndp <- reduced_data_matched %>% 
+  mutate(vote_ndp= ifelse(votechoice == "ndp", 1, 0))
+
+propensity_score_regression_3 <- 
+  glm(vote_ndp ~ age + sex + province + education, data = vote_for_ndp, family=binomial(link = "logit"))
+
+#huxtable::huxreg(propensity_score_regression_3)
+```
+
+```{r echo=FALSE, include=FALSE}
+# for Bloc Québécois
+vote_for_bloc_quebecois <- reduced_data_matched %>% 
+  mutate(vote_bloc_quebecois= ifelse(votechoice == "Bloc Québécois", 1, 0))
+
+propensity_score_regression_4 <- 
+  glm(vote_bloc_quebecois ~ age + sex + province + education, data = vote_for_bloc_quebecois, family=binomial(link = "logit"))
+
+#huxtable::huxreg(propensity_score_regression_4)
+```
+
+```{r echo=FALSE, include=FALSE}
+# for green party
+vote_for_green_party <- reduced_data_matched %>% 
+  mutate(vote_green_party= ifelse(votechoice == "Green Party", 1, 0))
+
+propensity_score_regression_5 <- 
+  glm(vote_green_party ~ age + sex + province + education, data = vote_for_green_party, family=binomial(link = "logit"))
+
+#huxtable::huxreg(propensity_score_regression_5)
+```
+
+```{r echo=FALSE, include=FALSE}
+# for people's party
+vote_for_peoples_party <- reduced_data_matched %>% 
+  mutate(vote_peoples_party= ifelse(votechoice == "People's Party", 1, 0))
+
+propensity_score_regression_6 <- 
+  glm(vote_peoples_party ~ age + sex + province + education, data = vote_for_peoples_party, family=binomial(link = "logit"))
+
+#huxtable::huxreg(propensity_score_regression_6)
+```
+
+```{r echo=FALSE, include=FALSE}
+# for "Another party (please specify)"
+vote_for_another_party <- reduced_data_matched %>% 
+  mutate(vote_another_party= ifelse(votechoice == "Another party (please specify)", 1, 0))
+
+propensity_score_regression_7 <- 
+  glm(vote_another_party ~ age + sex + province + education, data = vote_for_another_party, family=binomial(link = "logit"))
+
+#huxtable::huxreg(propensity_score_regression_7)
+```
+
+## Post-strafication Predication
+
+In order to estimate the proportion of people who will vote for each political party, we need to perform a post-stratification analysis. Post-stratification analysis is performed with the aim of conducting inference on a large data sample that may not necessarily be representative of the target population. In order to conduct post-stratification analysis, we need to collect large amounts of demographic data along with the sample. We partition the data by cells with all the possible combinations of demographic characteristics, estimate a response for each cell, and estimate the response of the target population by weighting each cell by the number of data points in each cell. Here we create cells based on the chosen demographic characteristics, which are age (in two groups), sex, province and education. The data is partitioned into different cells, which have at least one person with the described characteristics. The weighting of each cell is calculated by multiplying the response estimate of each cell by the respective population size of that cell, then adding together all of these values, and finally dividing the sum by the entire population size.
+
+The formula for the post-stratification calculation is as follows:
+$$\hat{y}^{PS} = \frac{\sum N_j \hat{y}_j}{\sum N_j}$$, where $\hat{y}_j$ is the estimated response for the $j^{th}$ cell, $N_j$ is the number of samples per cell, and $\hat{y}^{PS}$ is the estimated response for the target population.
+
+# Results
+
+## Model Results
+Figure 2: Descriptive statistics of the model of Liberal Party regression estimates
+```{r, echo=FALSE}
+library(knitr)
+t_summary_1 <- tidy(propensity_score_regression_1)
+kable(tidy(propensity_score_regression_1))
+```
+Only the summry table of estimates of model estimating the proportion of voters voting for Liberal Party is included in Figure 2, all the other summary results have all been added to Appendix. In each of the six prediction models, the interpretation of each estimate will follow the same principles. For example, with significance of variables in this analysis determined by the p-value threshold of $p < 0.05$, it can be seen in Figure 1 that province British Columbia is significant and has an estimate of $\beta_3$ = `r t_summary_1$estimate[4]`. The regression estimates are the log odds of the voting estimate, therefore the interpretation of this result is that the likelihood of voting for Liberal Party  of respondents who live in British Columbia is exp($\beta$) = `r exp(t_summary_1$estimate[4])` times that of voting for Liberal Party of people living in Alberta, when controlling for all other variables. 
+
+For the model estimating the proportion of voters voting for Liberal Party, all the categories are significant based on p-values except for categories province:Saskatchewan and education: University certificate, diploma or degree; for the model estimating the proportion of voters voting for Conservative Party, all the categories are significant based on p-values except for category education: University certificate or diploma below the bachelor’s level; for the model estimating the proportion of voters voting for NDP Party, all the categories are significant based on p-values except for categories province:Nunavut, province:Prince Edward Island, province:Quebec, education:College, CEGEP or other non-university certificate or trade, education:University certificate, diploma or degree; for the model estimating the proportion of voters voting for Green Party, all the categories are significant based on p-values except for categories province:Newfoundland and Labrador, province:Saskatchewan, and all the education levels; for the model estimating the proportion of voters voting for People's Party, only age, sex, province New Brunswick, educationCollege, CEGEP or other non-university certificate or trade, educationHigh school diploma or a high school equivalency certificate, education:Less than high school diploma or its equivalent are significant categories; for the model estimating the proportion of voters voting for Another Party, only province:Saskatchewan is the significant category. It is noticeable that in the model estimating the proportion of voters voting for Bloc Quebecois Party, all the p-values are extremely large, so this model is bad at predicting popular vote and is very likely to be an invalid model. The predicting ability of a model is weaker with fewer significant categories, so models that have many insignificant catergories need to  be improved and we shall explain this in Discussion section.
+
+## Post-stratification Results
+Figure 3: Table of Estimated Popular Vote
+```{r echo=FALSE}
+table_prop <- matrix(c(0.2827609,0.3672402,0.183442,0.02128727,0.1182828,0.02855728,0.007564347),ncol=1,byrow=TRUE)
+ colnames(table_prop) <- c("Popular Vote")
+ rownames(table_prop) <- c("Liberal Party","Conservative Party", "NDP Party","Bloc Quebecois Party", "Green Party", "People's Party", "Another Party")
+
+kable(table_prop)
+```
+We estimate that the proportion of voters in favour of voting for Liberal Party to be 0.283, for Conservative Party is 0.367, for NDP Party is 0.183, for Bloc Quebecois Party is 0.021, for Green Party is 0.118, for People's Party is 0.029, for Another Party is 0.008.  These estimates are based off our post-stratification analysis of the proportion of voters in favour of each party modelled by a multinomial logistic regression model respectively, which accounted for age (in two groups), sex, province and education. Figure 3 shows the estimated popular vote for each political party.
+```{r echo= FALSE, include= FALSE}
+reduced_data <- read.csv("gss.csv")
+models <- list(propensity_score_regression_1, 
+               propensity_score_regression_2, 
+               propensity_score_regression_3,
+               propensity_score_regression_4,
+               propensity_score_regression_5,
+               propensity_score_regression_6, 
+               propensity_score_regression_7)
+ for (i in models){
+  reduced_data$logodds_estimate <-
+  i %>%
+  predict(newdata = reduced_data)
+  
+reduced_data$estimate <-
+  exp(reduced_data$logodds_estimate)/(1+exp(reduced_data$logodds_estimate))
+print(reduced_data %>%
+  mutate(alp_predict_prop= estimate*n) %>%
+  summarise(alp_predict= sum(alp_predict_prop)/sum(n)))
+}
+```
+# Discussion
+
+## Summary
+In this paper of study, both 2019 CES Online Survey Data and 2017 General Socail Survey Data have been cleaned before conducting any statitsical analysis. We have focused on performing multinomial logistic regression paired with propensity score matching to estimate the predicted popular vote for each political party in post-stratification process. During propensity score matching, we have examined the casual link between whether the individual is young and whether the individual votes for a particular party. After matching similar subjects, we obtained the matched data which has been reduced from the cleaned version of 2019 CES Online Survey Data, and used it to build our multinomial logistic regression models. Whether or not voting for a particular party has been considered as a binary response variable for each model, and age(in two groups), sex, province, and education are all categorical explanatory variables which are used for predicting the response vote choice. Each model has been analyzed regarding whether or not its coefficients are significant and are useful for predicting results. We eventually performed post-stratification process on 2017 General Social Surey Data to get the desired estimates of popular vote for each political party. 
+
+## Conclusions
+Figure 4: Popular Votes of Actual Result vs. Prediction result
+```{r table, echo=FALSE}
+table_prop <- matrix(c(0.3312,0.2827609,
+                       0.3434, 0.3672402,
+                       0.1598,0.183442,
+                       0.0763, 0.02128727,
+                       0.0655,0.1182828,
+                       0.0164,0.02855728,
+                       0.0067, 0.007564347),ncol=2,byrow=TRUE)
+ colnames(table_prop) <- c("Actual Popular Vote", "Predicted Popular Vote")
+ rownames(table_prop) <- c("Liberal Party","Conservative Party", "NDP Party","Bloc Quebecois Party", "Green Party", "People's Party", "Another Party")
+kable(table_prop)
+```
+In conclusion, the results show that if "everyone" (as how we defined in the Introduction section) has voted, Conservative Party will gain more popular vote and win the 2019 Canadian Federal Election. However, in reality, Liberal Party won the federal election in 2019. During the study, by first performing propensity score matching, where age (in two groups) is set as propensity, and obtained a propensity score matched data set, and then building multinomial logistic regression models for each Party respectively, and eventually conducting post-stratification on census data, there is sufficient evidence to show that the methods we employed during the entire study is convincing in supporting this reuslt.
+
+The actual election result is 0.3312 for Liberal Party, 0.3434 for Conservative Party, 0.1598 for NDP Party, 0.0763 for Bloc Quebecois Party, 0.0655 for Green Party, 0.0164 for People's Party, and 0.0067 for Another Party (Wikipedia contributors, 2020). In Figure 4, we make comparison between prediction estimates of popular vote and the actual popular vote. More popular vote for Conservative Party compared to Liberal Party reveals a potential fact that a greater amount of people who did not vote on election day favour Conservative Party. For the estimated popular vote for other political parties except for Bloc Quebecois Party, the prediction and actual election resulst are similar. The huge difference between the prediction result and actual result for Bloc Quebecois Party is due to its inappropriate prediction model. Also, we see that the turnout on election day is important for the election results since different turnouts might cause different final election results. A low turnout of a certain group will cause an disproportinate affect on the popular vote. In 2019 Canadian Federal Election, we can deduce that people who support Conservative Party has a low turnout on election day based on the model result. It is true that there exist various factors which can affect the turnout of a voter, such as timing of the election day, weather and etc., so the election result should be subjected to change due to different turnout rate of voters.
+
+## Weakness & future steps
+
+Weaknesses in this study are still need to discussed.  First, an inappropriate age boundary might have been set to divide people into young and old groups. When perfroming propensity score matching, people have been assgined to two age groups, where 60 years old is a boundary. It defines people who are below 60 years old as young, and who are above 60 years old as old. However, the amount of people who are below 60 years old and the amount of people above 60 years old are not the same in this data set, so this causes potential errors due to the unequivalent amount of units in treatment and control groups. Also, the boundary of age 60 might contain bias since people's mental age is sometimes different from their physical age, so it will be better if we could find out a more fair way to split people into two age groups. Second, the census data that was used for post-stratification process is from 2017 rather than 2019. This might create potential change of an individual. For example, a person who did not finish Bachelor's degree might finish it in 2019. At this time, our prediction result becomes inaccurate if we still use census data from 2017 since the value of explanatory variable of this person has changed in 2019. Third, when cleaning CES Online Survey Data, we omitted sex category "Other". The reason behind doing this was that there are only two categories of sex in 2017 General Social Survey Data. However, this category does play a role for prediction in a model, and it might cause a substantial change in the prediction result. For example, when a party strongly favours the policy of LGBTQ, then people who choose sex as "Other" might vote for this party with a greater possibility. Last, only four explanatory variables have been chosen due to the limited amount of time. While these partitioned our data into cells with distinguishable demographic characteristics, in real life, there are many more factors (i.e. income, employment status, etc.) and variables that we need to consider when predicting the voting outcome. In terms of our data cleaning process, we took out the “respondent skipped”, or the NA values from the original data set. This means that our analysis does not account for the opinions of those who did not choose to reveal their personal information, and it may cause the non-sampling error.
+
+More importantly, there are few things which we can do in the future to improve this statistcal analysis. When comparing our predicted result with the actual election result, it can be seen that the predicted results and actual results are different. This finding supports what we have been exploring and expecting in the study, but we still need to check if ant discrepency exists while predicting popular vote. One way to make our study more practical would be to conduct post-hoc analysis and compare the results from the actual election outcome. Follow-up surveys or exit polls can be conducted to either confirm our analysis or provide insight for ways to improve our analytical methods. We could use a least squares regression model to contrast and compare the actual observed data and our predicted data. The surveys and exit polls could contain questions such as "Did you vote on election day?" "If so, is there a specific reason that makes you fail to vote?" or "Are you satisfied with the election result?". The answers to these question will let us know more about a voter's personal opinion on election. For example, we could try to find out if there is a casual link between whether people vote on election day or not and whether they are satisfied with the result, and which party they think they will vote based on current opinion of election result. By knowing more information regarding how people's thoughts have changed during before and after the election, we will be able to perform more strict model predictions, such as a multilevel regression post-stratification (MRP) model, which requires fitting two nested multilevel logistic regressions for estimating candidate support in each cell, and then weighing cell-level estimates by the proportion of the electorate in each cell and aggregated to the appropriate level. Lastly, another way to predict more accurate election result can be predicting the turnout based on previous years election study, and then use the voters who are predicted to turn out on election day to perform predictions.
+
+# References
+1. Austin, Peter C. “An Introduction to Propensity Score Methods for Reducing the Effects of Confounding in Observational Studies.” Multivariate Behavioral Research, Taylor &amp; Francis, May 2011, www.ncbi.nlm.nih.gov/pmc/articles/PMC3144483/. 
+
+2. “How to Create Table 1 Summary Information.” Exploratory, exploratory.io/note/kanaugust/How-to-Create-Table-1-Summary-Information-YYf5BPf4Xs. 
+
+3. Government of Canada, Statistics Canada. “General Social Survey – Family (GSS).” Government of Canada, Statistics Canada, 13 Nov. 2020, www.statcan.gc.ca/eng/survey/household/4501. 
+
+4. Masters, Anthony B. “MRP Estimates and the 2019 General Election.” Medium, Medium, 27 Nov. 2019, anthonybmasters.medium.com/mrp-estimates-and-the-2019-general-election-9ac1794120d6. 
+
+
+# Appendix
+Figure A1: Descriptive Statistics of the Model of Conservative Party Regression Estimates
+```{r, echo=FALSE}
+
+t_summary_2 <- tidy(propensity_score_regression_2)
+kable(tidy(propensity_score_regression_2))
+```
+
+Figure A2: Descriptive Statistics of the Model of NDP Party Regression Estimates
+```{r, echo=FALSE}
+
+t_summary_3 <- tidy(propensity_score_regression_3)
+kable(tidy(propensity_score_regression_3))
+```
+
+Figure A3: Descriptive Statistics of the Model of Bloc Quebecois Party Regression Estimates
+```{r, echo=FALSE}
+
+t_summary_4 <- tidy(propensity_score_regression_4)
+kable(tidy(propensity_score_regression_4))
+```
+
+Figure A4: Descriptive Statistics of the Model of Green Party Regression Estimates
+```{r, echo=FALSE}
+
+t_summary_5 <- tidy(propensity_score_regression_5)
+kable(tidy(propensity_score_regression_5))
+```
+
+Figure A5: Descriptive Statistics of the Model of People's Party Regression Estimates
+```{r, echo=FALSE}
+
+t_summary_6 <- tidy(propensity_score_regression_6)
+kable(tidy(propensity_score_regression_6))
+```
+
+Figure A6: Descriptive Statistics of the Model of Another Party Regression Estimates
+```{r, echo=FALSE}
+
+t_summary_7 <- tidy(propensity_score_regression_7)
+kable(tidy(propensity_score_regression_7))
+```
+
